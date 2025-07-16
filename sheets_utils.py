@@ -1,23 +1,29 @@
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import os
+import base64
+import gspread
+from google.oauth2.service_account import Credentials
 
-SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
-SHEET_NAME = os.environ.get("SHEET_NAME", "シート1")  # 任意に変更
+def get_worksheet():
+    # Renderでは環境変数から取得したBase64文字列をデコードしてcredentials.jsonとして扱う
+    creds_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_BASE64']).decode('utf-8')
+    creds_dict = eval(creds_json)
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(credentials)
 
-def _get_sheet():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-    client = gspread.authorize(creds)
-    sheet = client.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
-    return sheet
+    # スプレッドシートのIDを環境変数から取得
+    sheet_id = os.environ['SPREADSHEET_ID']
+    return client.open_by_key(sheet_id).sheet1
 
-def already_exists(property_id):
-    sheet = _get_sheet()
-    existing_ids = sheet.col_values(2)  # B列（物件ID）
-    return property_id in existing_ids
+def append_if_not_duplicate(bukken_name, bukken_id, date_str):
+    ws = get_worksheet()
+    records = ws.get_all_values()
 
-def append_to_sheet(name, property_id, date):
-    sheet = _get_sheet()
-    sheet.append_row([name, property_id, '', date])
+    for row in records:
+        if len(row) >= 2 and row[0] == bukken_name and row[1] == bukken_id:
+            print("🟡 Duplicate entry found. Skipping.")
+            return False
 
+    ws.append_row([bukken_name, bukken_id, "", date_str])
+    print("✅ Appended to sheet:", bukken_name, bukken_id, date_str)
+    return True
