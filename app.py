@@ -1,48 +1,38 @@
 from flask import Flask, request, jsonify
-from sheets_utils import append_to_sheet, already_exists
-import os
-import datetime
+from datetime import datetime
 import re
+from sheets_utils import append_if_not_duplicate
 
 app = Flask(__name__)
 
-SLACK_VERIFICATION_TOKEN = os.environ.get("SLACK_VERIFICATION_TOKEN")
+@app.route("/")
+def home():
+    return "Slack to Sheets app is running."
 
 @app.route("/events", methods=["POST"])
 def slack_events():
-    payload = request.json
+    data = request.json
 
-    # Slack URL Verification
-    if payload.get("type") == "url_verification":
-        return jsonify({"challenge": payload["challenge"]})
+    # URL検証
+    if data.get("type") == "url_verification":
+        return jsonify({"challenge": data["challenge"]})
 
-    # Basic event validation
-    event = payload.get("event", {})
-    if event.get("type") != "message" or "bot_id" not in event:
-        return "", 200  # Ignore user messages or other events
+    # メッセージイベントの処理
+    if data.get("type") == "event_callback":
+        event = data["event"]
+        text = event.get("text", "")
+        ts = event.get("ts", "")
 
-    text = event.get("text", "")
-    property_name, property_id = extract_info(text)
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
+        # 物件名とIDを抽出
+        name_match = re.search(r"物件名:\s*(.+?)\n", text)
+        id_match = re.search(r"物件ID:\s*(\d+)", text)
 
-    if not property_id:
-        return "No property ID found", 200
+        if name_match and id_match:
+            bukken_name = name_match.group(1).strip()
+            bukken_id = id_match.group(1).strip()
+            date = datetime.fromtimestamp(float(ts.split('.')[0])).strftime('%Y/%m/%d')
+            append_if_not_duplicate(bukken_name, bukken_id, date)
+        else:
+            print("⚠️ 情報が見つかりませんでした")
 
-    if already_exists(property_id):
-        return f"Property ID {property_id} already exists", 200
-
-    append_to_sheet(property_name, property_id, today)
-    return "OK", 200
-
-def extract_info(text):
-    lines = text.strip().splitlines()
-    name = lines[0].strip() if lines else ""
-
-    id_match = re.search(r"物件ID[:：]?\s*(\d+)", text)
-    prop_id = id_match.group(1) if id_match else ""
-
-    return name, prop_id
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
-
+    return "OK"
