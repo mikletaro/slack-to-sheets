@@ -13,7 +13,7 @@ def normalize_name(name):
 
 def get_slack_messages_past_week():
     now = datetime.now()
-    oldest = int((now - timedelta(days=7)).timestamp())
+    oldest = int((now - timedelta(days=8)).timestamp())  # ←1日広げた
     url = "https://slack.com/api/conversations.history"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     params = {
@@ -21,8 +21,14 @@ def get_slack_messages_past_week():
         "oldest": oldest,
         "limit": 200
     }
-    res = requests.get(url, headers=headers, params=params).json()
-    return res.get("messages", [])
+    messages = []
+    while True:
+        res = requests.get(url, headers=headers, params=params).json()
+        messages.extend(res.get("messages", []))
+        if not res.get("has_more"):
+            break
+        params["cursor"] = res.get("response_metadata", {}).get("next_cursor")
+    return messages
 
 def extract_bukken_info(text):
     name_match = re.search(r"物件名:\s*(.+?)\n", text)
