@@ -13,6 +13,8 @@ def get_worksheet():
 
     # スプレッドシートのIDを環境変数から取得
     sheet_id = os.environ['SPREADSHEET_ID']
+    spreadsheet = client.open_by_key(sheet_id) 
+    
     return spreadsheet.worksheet("テストログ")
 
 def append_if_not_duplicate(bukken_name, bukken_id, date_str):
