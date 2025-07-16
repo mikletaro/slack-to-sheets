@@ -31,15 +31,23 @@ def check_missing_entries():
     messages = get_slack_messages_past_week()
     sheet_rows = get_worksheet().get_all_values()
 
-    existing = {(row[0], row[1]) for row in sheet_rows if len(row) >= 2}
+    # スプレッドシートの内容を確認
+    print("📄 スプレッドシートの内容:")
+    for row in sheet_rows:
+        print(f"[SHEET] {row}")
+
+    existing = {(row[0].strip(), row[1].strip()) for row in sheet_rows if len(row) >= 2}
     missing = []
 
+    print("\n🧾 Slackメッセージから抽出した物件情報:")
     for msg in messages:
         text = msg.get("text", "")
         name, bid = extract_bukken_info(text)
+        print(f"[SLACK] name: {name}, bid: {bid}")
         if name and bid and (name, bid) not in existing:
             missing.append((name, bid))
 
+    print("\n🔍 チェック結果:")
     if missing:
         print("❌ 記載漏れがあります：")
         for name, bid in missing:
