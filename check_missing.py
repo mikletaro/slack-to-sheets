@@ -14,10 +14,14 @@ def extract_info_from_message(text: str):
     bid = None
 
     for i, line in enumerate(lines):
-        if re.match(r"^物件名[:：]?$", line) and i + 1 < len(lines):
-            name_candidate = lines[i + 1]
-            if not re.match(r"^物件ID[:：]?$", name_candidate):
-                name = name_candidate
+        if re.match(r"^物件名[:：]?$", line):
+            # 候補の行が空ならさらに次の行も確認
+            for j in range(1, 3):
+                if i + j < len(lines):
+                    candidate = lines[i + j].strip()
+                    if candidate and not re.match(r"^物件ID[:：]?$", candidate):
+                        name = candidate
+                        break
         elif re.match(r"^物件ID[:：]?$", line) and i + 1 < len(lines):
             bid_line = lines[i + 1]
             bid = extract_bid(bid_line)
