@@ -2,6 +2,7 @@ import os
 import datetime
 import pytz
 import re
+from typing import Optional, Tuple
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from sheets_utils import get_worksheet, append_row_if_not_exists
@@ -37,11 +38,8 @@ def fetch_slack_messages():
         print(f"[ERROR] Slack API error: {e.response['error']}")
         return []
 
+# Slackメッセージから物件名・ID・日付を抽出
 def parse_slack_message(message: dict) -> Optional[Tuple[str, str, str]]:
-    import datetime
-    import pytz
-    import re
-
     blocks = message.get("blocks", [])
     name = None
     bid = None
@@ -77,37 +75,6 @@ def parse_slack_message(message: dict) -> Optional[Tuple[str, str, str]]:
     if name and bid and date:
         return (name, bid, date)
     return None
-    
-# 通知メッセージから情報抽出
-def extract_info_from_message(text: str):
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    name = None
-    bid = None
-
-    for i in range(len(lines)):
-        line = lines[i]
-
-        # 物件名の抽出（同一行 or 次の行）
-        if "物件名" in line and not name:
-            match = re.search(r"物件名[:：]?\s*(.+?)($|\s+\*?物件ID|物件ID[:：])", line)
-            if match:
-                name = match.group(1).strip()
-            elif i + 1 < len(lines):
-                next_line = lines[i + 1].strip()
-                if next_line and "物件ID" not in next_line:
-                    name = next_line.strip()
-
-        # 物件IDの抽出（同一行 or 次の行）
-        if "物件ID" in line and not bid:
-            match = re.search(r"物件ID[:：]?\s*(\d+)", line)
-            if match:
-                bid = match.group(1).strip()
-            elif i + 1 < len(lines):
-                next_line = lines[i + 1].strip()
-                if next_line.isdigit():
-                    bid = next_line
-
-    return name, bid
 
 # メイン処理
 def check_missing_entries():
@@ -118,15 +85,15 @@ def check_missing_entries():
     missing = []
 
     for msg in messages:
-        text = msg.get("text", "")
-        ts = float(msg.get("ts", "0"))
-        dt = datetime.datetime.fromtimestamp(ts, pytz.timezone("Asia/Tokyo")).date()
-        name, bid = extract_info_from_message(text)
-
-        print(f"[SLACK] timestamp: {dt}, name: {name}, bid: {bid}, date: {dt}")
-
-        if bid and name and (name, bid) not in existing_entries:
-            missing.append((dt.strftime("%Y-%m-%d"), name, bid))
+        parsed = parse_slack_message(msg)
+        if parsed:
+            name, bid, date = parsed
+            print(f"[SLACK] timestamp: {date}, name: {name}, bid: {bid}, date: {date}")
+            if (name, bid) not in existing_entries:
+                missing.append((date, name, bid))
+        else:
+            ts = msg.get("ts", "unknown")
+            print(f"[SKIP] パースできないメッセージ: {ts}")
 
     if not missing:
         print("✅ 今週分の通知はすべて記載済みです。")
