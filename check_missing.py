@@ -14,28 +14,29 @@ def extract_info_from_message(text: str):
     bid = None
 
     for i, line in enumerate(lines):
-        # 物件名の取得（"物件名:" の次の行を参照）
-        if re.match(r"^物件名[:：]?$", line) and i + 1 < len(lines):
+        # 物件名: の次の行が物件名（空でない、かつ "物件ID" などではない）
+        if re.fullmatch(r"物件名[:：]?", line) and i + 1 < len(lines):
             next_line = lines[i + 1].strip()
-            if next_line and not re.match(r"^物件ID[:：]?$", next_line):
+            if next_line and not re.search(r"物件ID|タグ種類|トラッキング", next_line):
                 name = next_line
 
-        # 物件IDの取得
-        if re.match(r"^物件ID[:：]?$", line) and i + 1 < len(lines):
+        # 物件ID: の次の行が ID（URL または 数字）
+        if re.fullmatch(r"物件ID[:：]?", line) and i + 1 < len(lines):
             next_line = lines[i + 1].strip()
-            if re.match(r"^\d+$", next_line):  # 数字だけの場合
+            # パターン1: 数字のみ
+            if re.fullmatch(r"\d+", next_line):
                 bid = next_line
+            # パターン2: リンク形式（Slackの <URL|123456>）
             else:
-                # URL形式から抽出
                 bid_match = re.search(r"mansion/(\d+)", next_line)
                 if bid_match:
                     bid = bid_match.group(1)
 
-    # バックアップとして、本文全体から bid 抽出（URLリンク形式）
+    # バックアップ: 全体からURLで拾う
     if not bid:
-        match = re.search(r"mansion/(\d+)\|", text)
-        if match:
-            bid = match.group(1)
+        bid_match = re.search(r"mansion/(\d+)", text)
+        if bid_match:
+            bid = bid_match.group(1)
 
     return name, bid
 
