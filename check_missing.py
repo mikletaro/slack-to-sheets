@@ -5,12 +5,10 @@ from datetime import datetime, timedelta, timezone
 from slack_sdk import WebClient
 from sheets_utils import get_worksheet
 
-# JST（日本時間）
 JST = timezone(timedelta(hours=9))
 
 
 def extract_info_from_message(text: str):
-    """Slackメッセージから物件名と物件IDを抽出（行ごと形式および1行形式に対応）"""
     lines = text.splitlines()
     name = None
     bid = None
@@ -22,7 +20,6 @@ def extract_info_from_message(text: str):
             bid_line = lines[i + 1].strip()
             bid = extract_bid(bid_line)
 
-    # fallback: 一行にすべて含まれているケースにも対応
     if not bid:
         match = re.search(r"mansion/(\d+)\|", text)
         if match:
@@ -32,11 +29,9 @@ def extract_info_from_message(text: str):
 
 
 def extract_bid(text: str):
-    """リンク付きのbid表現から純粋なID（数字部分）を抽出"""
     match = re.search(r"mansion/(\d+)\|", text)
     if match:
         return match.group(1)
-    # プレーンな数値のみだった場合
     if re.fullmatch(r"\d+", text):
         return text
     return None
@@ -57,7 +52,6 @@ def fetch_slack_messages():
 
     response = client.conversations_history(channel=channel_id, oldest=oldest)
     messages = response["messages"]
-
     print(f"[INFO] 取得したSlackメッセージ数: {len(messages)}")
 
     records = []
@@ -78,14 +72,14 @@ def fetch_slack_messages():
     return records
 
 
-def check_missing_entries():
+def check_and_append_missing_entries():
     slack_records = fetch_slack_messages()
-
     if not slack_records:
         print("❌ Slackから有効な通知が取得できませんでした。")
         return
 
-    sheet_rows = get_worksheet().get_all_values()
+    ws = get_worksheet()
+    sheet_rows = ws.get_all_values()
     sheet_bids = set(r[1] for r in sheet_rows[1:] if len(r) > 1 and r[1])
 
     missing = []
@@ -98,9 +92,13 @@ def check_missing_entries():
         print("⚠️ スプレッドシートに記載されていない通知があります:")
         for name, bid, date in missing:
             print(f"- 日付: {date}, 物件名: {name}, 物件ID: {bid}")
+
+        rows_to_append = [[name or "", bid, "", date] for name, bid, date in missing]
+        ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+        print(f"📌 {len(rows_to_append)} 件をスプレッドシートに追記しました。")
     else:
         print("✅ 今週分の通知はすべて記載済みです。")
 
 
 if __name__ == "__main__":
-    check_missing_entries()
+    check_and_append_missing_entries()
