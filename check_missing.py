@@ -4,101 +4,100 @@ from datetime import datetime, timedelta
 import pytz
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from sheets_utils import append_if_not_duplicate
 
-from sheets_utils import append_row_if_not_exists
-
-# 環境変数の読み込み
 SLACK_TOKEN = os.environ["SLACK_BOT_TOKEN"]
-SLACK_CHANNEL_ID = os.environ["SLACK_CHANNEL_ID"]
-
-# JSTの今週月曜0時を取得
-def get_start_of_week_jst():
-    jst = pytz.timezone("Asia/Tokyo")
-    now = datetime.now(jst)
-    start_of_week = now - timedelta(days=now.weekday())
-    start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-    return start_of_week
-
-# Slackメッセージ取得
-def fetch_slack_messages():
-    client = WebClient(token=SLACK_TOKEN)
-    start_ts = get_start_of_week_jst().timestamp()
-    messages = []
-
-    try:
-        response = client.conversations_history(
-            channel=SLACK_CHANNEL_ID,
-            oldest=str(start_ts),
-            limit=100
-        )
-        messages.extend(response["messages"])
-    except SlackApiError as e:
-        print("Error fetching messages:", e)
-
-    return messages
-
-# メッセージ本文から物件名とIDと日付を抽出
-import re
+CHANNEL_ID = os.environ["SLACK_CHANNEL_ID"]
 
 def parse_slack_message(text):
-    """
-    Slackから取得したメッセージの中から「物件名」「物件ID」「日付」を抽出する。
-    複数行にわたる形式にも対応。
-    """
     results = []
-
-    lines = text.splitlines()
-    for line in lines:
-        # 行頭が "- 日付: " で始まる通知行のみ処理する
-        if not line.strip().startswith("- 日付"):
-            continue
-
-        name_match = re.search(r'物件名[:：]\s*(.*?)(?:,|$)', line)
-        bid_match = re.search(r'物件ID[:：]\s*(\d+)', line)
-        date_match = re.search(r'日付[:：]\s*(\d{4}-\d{2}-\d{2})', line)
-
-        name = name_match.group(1).strip() if name_match else None
-        bid = bid_match.group(1).strip() if bid_match else None
-        date = date_match.group(1).strip() if date_match else None
-
-        if name and bid and date:
-            results.append((name, bid, date))
+    lines = text.split('\n')
+    bid_pattern = re.compile(r'(物件ID[:：]?\s*(\d+))')
+    date_pattern = re.compile(r'(\d{4}-\d{2}-\d{2})')
     
-    return results  # List[Tuple[str, str, str]]
+    bukken_name = None
+    bukken_id = None
+    date_str = None
 
+    for line in lines:
+        bid_match = bid_pattern.search(line)
+        date_match = date_pattern.search(line)
+        
+        if bid_match:
+            bukken_id = bid_match.group(2)
+        if date_match:
+            date_str = date_match.group(1)
+        
+        # 「*物件ID:* 123456」のような形式を除外して物件名とみなす
+        if '物件ID' not in line and '日付' not in line and date_pattern.search(line) is None:
+            bukken_name = line.strip()
+        
+        if bukken_name and bukken_id and date_str:
+            results.append((bukken_name, bukken_id, date_str))
+            bukken_name = bukken_id = date_str = None  # リセットして次の行に対応
 
-# メイン処理
+    return results
+
+def get_this_week_start_jst():
+    jst = pytz.timezone('Asia/Tokyo')
+    now = datetime.now(jst)
+    monday = now - timedelta(days=now.weekday())
+    monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    return monday
+
+def fetch_slack_messages():
+    client = WebClient(token=SLACK_TOKEN)
+    start_time = get_this_week_start_jst().timestamp()
+    messages = []
+    has_more = True
+    cursor = None
+
+    print("[INFO] Slack取得開始（今週月曜 JST）:", get_this_week_start_jst())
+
+    try:
+        while has_more:
+            response = client.conversations_history(
+                channel=CHANNEL_ID,
+                oldest=str(start_time),
+                limit=200,
+                cursor=cursor
+            )
+            messages.extend(response["messages"])
+            has_more = response.get("has_more", False)
+            cursor = response.get("response_metadata", {}).get("next_cursor", None)
+    except SlackApiError as e:
+        print(f"[ERROR] Slack API error: {e.response['error']}")
+    
+    print("[INFO] 取得したSlackメッセージ数:", len(messages))
+    return messages
+
 def check_missing_entries():
     messages = fetch_slack_messages()
-    print(f"[INFO] 取得したSlackメッセージ数: {len(messages)}")
-
-    missing_entries = []
+    new_entries = []
 
     for msg in messages:
-        ts = msg.get("ts")
         text = msg.get("text", "")
-        name, bid, date_str = parse_slack_message(text)
-
-        if not (name and bid and date_str):
-            print(f"[SKIP] パースできないメッセージ: {ts}")
-            continue
-
-        print(f"[SLACK] timestamp: {datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d')}, name: {name}, bid: {bid}, date: {date_str}")
-
-        row = [name, bid, "", date_str]
-        success = append_row_if_not_exists(row, unique_cols=["物件名", "物件ID", "日付"])
-
-        if success:
-            missing_entries.append((name, bid, date_str))
-
-    if missing_entries:
+        ts = msg.get("ts", "")
+        try:
+            parsed_entries = parse_slack_message(text)
+            if not parsed_entries:
+                print(f"[SKIP] パースできないメッセージ: {ts}")
+                continue
+            for name, bid, date_str in parsed_entries:
+                print(f"[SLACK] timestamp: {ts}, name: {name}, bid: {bid}, date: {date_str}")
+                success = append_if_not_duplicate(name, bid, date_str)
+                if success:
+                    new_entries.append((name, bid, date_str))
+        except Exception as e:
+            print(f"[ERROR] メッセージ処理中の例外: {e}, ts: {ts}")
+    
+    if new_entries:
         print("⚠️ スプレッドシートに記載されていない通知があります:")
-        for name, bid, date_str in missing_entries:
+        for name, bid, date_str in new_entries:
             print(f"- 日付: {date_str}, 物件名: {name}, 物件ID: {bid}")
-        print(f"📌 {len(missing_entries)} 件をスプレッドシートに追記しました。")
+        print(f"📌 {len(new_entries)} 件をスプレッドシートに追記しました。")
     else:
         print("✅ 今週分の通知はすべて記載済みです。")
 
 if __name__ == "__main__":
-    print(f"[INFO] Slack取得開始（今週月曜 JST）: {get_start_of_week_jst()}")
     check_missing_entries()
