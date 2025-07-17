@@ -14,33 +14,30 @@ def extract_info_from_message(text: str):
     bid = None
 
     for i, line in enumerate(lines):
-        if re.match(r"^物件名[:：]?$", line):
-            # 候補の行が空ならさらに次の行も確認
-            for j in range(1, 3):
-                if i + j < len(lines):
-                    candidate = lines[i + j].strip()
-                    if candidate and not re.match(r"^物件ID[:：]?$", candidate):
-                        name = candidate
-                        break
-        elif re.match(r"^物件ID[:：]?$", line) and i + 1 < len(lines):
-            bid_line = lines[i + 1]
-            bid = extract_bid(bid_line)
+        # 物件名の取得（"物件名:" の次の行を参照）
+        if re.match(r"^物件名[:：]?$", line) and i + 1 < len(lines):
+            next_line = lines[i + 1].strip()
+            if next_line and not re.match(r"^物件ID[:：]?$", next_line):
+                name = next_line
 
+        # 物件IDの取得
+        if re.match(r"^物件ID[:：]?$", line) and i + 1 < len(lines):
+            next_line = lines[i + 1].strip()
+            if re.match(r"^\d+$", next_line):  # 数字だけの場合
+                bid = next_line
+            else:
+                # URL形式から抽出
+                bid_match = re.search(r"mansion/(\d+)", next_line)
+                if bid_match:
+                    bid = bid_match.group(1)
+
+    # バックアップとして、本文全体から bid 抽出（URLリンク形式）
     if not bid:
         match = re.search(r"mansion/(\d+)\|", text)
         if match:
             bid = match.group(1)
 
     return name, bid
-
-
-def extract_bid(text: str):
-    match = re.search(r"mansion/(\d+)\|", text)
-    if match:
-        return match.group(1)
-    if re.fullmatch(r"\d+", text):
-        return text
-    return None
 
 
 def get_monday_jst():
