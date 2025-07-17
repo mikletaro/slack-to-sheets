@@ -39,12 +39,10 @@ def fetch_slack_messages():
 
 # メッセージ本文から物件名とIDと日付を抽出
 def parse_slack_message(text):
-    # 物件名: XXXXX
-    name_match = re.search(r"物件名[:：]\s*(.+?)(?:\s|　|,|，|。|$)", text)
-    # 物件ID: 123456
-    bid_match = re.search(r"物件ID[:：]?\s*(\d+)", text)
-    # 日付: 2025-07-16
-    date_match = re.search(r"日付[:：]?\s*(\d{4}-\d{2}-\d{2})", text)
+    # より柔軟に改行・全角・半角コロンに対応
+    name_match = re.search(r"[物件名|名称][：:]\s*(.+)", text)
+    bid_match = re.search(r"物件ID[：:]\s*(\d+)", text)
+    date_match = re.search(r"日付[：:]\s*(\d{4}-\d{2}-\d{2})", text)
 
     name = name_match.group(1).strip() if name_match else None
     bid = bid_match.group(1).strip() if bid_match else None
