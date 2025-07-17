@@ -38,7 +38,7 @@ def fetch_slack_messages():
         print(f"[ERROR] Slack API error: {e.response['error']}")
         return []
 
-# Slackメッセージから物件名・ID・日付を抽出
+# Slackメッセージから名前・物件ID・日付を抽出
 def parse_slack_message(message: dict) -> Optional[Tuple[str, str, str]]:
     blocks = message.get("blocks", [])
     name = None
@@ -63,9 +63,15 @@ def parse_slack_message(message: dict) -> Optional[Tuple[str, str, str]]:
             if match:
                 name = match.group(1).strip()
         if "物件ID" in text and not bid:
-            match = re.search(r"物件ID[:：]*\n?(\d+)", text)
+            match = re.search(r"物件ID[:：]*\n?(.+)", text)
             if match:
                 bid = match.group(1).strip()
+
+    # bid が Slack のリンク形式なら正規化する
+    if bid and "|" in bid:
+        match = re.search(r"\|(\d+)>", bid)
+        if match:
+            bid = match.group(1)
 
     ts = message.get("ts")
     if ts:
@@ -76,24 +82,61 @@ def parse_slack_message(message: dict) -> Optional[Tuple[str, str, str]]:
         return (name, bid, date)
     return None
 
+# 通知メッセージから名前と物件IDを抽出
+def extract_info_from_message(text: str):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    name = None
+    bid = None
+
+    for i in range(len(lines)):
+        line = lines[i]
+        if "物件名" in line and not name:
+            match = re.search(r"物件名[:：]?\s*(.+?)($|\s+\*?物件ID|物件ID[:：])", line)
+            if match:
+                name = match.group(1).strip()
+            elif i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line and "物件ID" not in next_line:
+                    name = next_line.strip()
+
+        if "物件ID" in line and not bid:
+            match = re.search(r"物件ID[:：]?\s*(\d+)", line)
+            if match:
+                bid = match.group(1).strip()
+            elif i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line.isdigit():
+                    bid = next_line
+
+    return name, bid
+
 # メイン処理
 def check_missing_entries():
     messages = fetch_slack_messages()
-    sheet_rows = get_worksheet().get_all_values()
+    sheet = get_worksheet()
+    sheet_rows = sheet.get_all_values()
     existing_entries = {(row[0], row[1]) for row in sheet_rows[1:]}
-
     missing = []
 
     for msg in messages:
+        ts = msg.get("ts", "")
+        text = msg.get("text", "")
+        dt = datetime.datetime.fromtimestamp(float(ts), pytz.timezone("Asia/Tokyo")).date()
+
         parsed = parse_slack_message(msg)
         if parsed:
             name, bid, date = parsed
-            print(f"[SLACK] timestamp: {date}, name: {name}, bid: {bid}, date: {date}")
-            if (name, bid) not in existing_entries:
-                missing.append((date, name, bid))
         else:
-            ts = msg.get("ts", "unknown")
             print(f"[SKIP] パースできないメッセージ: {ts}")
+            name, bid = extract_info_from_message(text)
+            if not (name and bid):
+                continue
+            date = dt.strftime("%Y-%m-%d")
+
+        print(f"[SLACK] timestamp: {dt}, name: {name}, bid: {bid}, date: {date}")
+
+        if (name, bid) not in existing_entries:
+            missing.append((date, name, bid))
 
     if not missing:
         print("✅ 今週分の通知はすべて記載済みです。")
@@ -101,8 +144,7 @@ def check_missing_entries():
         print("⚠️ スプレッドシートに記載されていない通知があります:")
         for date_str, name, bid in missing:
             print(f"- 日付: {date_str}, 物件名: {name}, 物件ID: {bid}")
-            append_row_if_not_exists([name, bid, "", date_str])
-
+            append_row_if_not_exists(sheet, [name, bid, "", date_str])
         print(f"📌 {len(missing)} 件をスプレッドシートに追記しました。")
 
 if __name__ == "__main__":
