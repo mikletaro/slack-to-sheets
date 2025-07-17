@@ -7,30 +7,28 @@ from sheets_utils import get_worksheet
 
 JST = timezone(timedelta(hours=9))
 
+
 def extract_info_from_message(text: str):
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     name = None
     bid = None
 
-    for i, line in enumerate(lines):
-        # 物件名の取得: 「物件名:」という行の直後が物件名
-        if line.startswith("物件名") and i + 1 < len(lines):
-            next_line = lines[i + 1].strip()
-            if next_line and not next_line.startswith("物件ID") and "タグ" not in next_line:
-                name = next_line
+    for i in range(len(lines)):
+        # 「物件名:」に完全一致する行の次の行が名前
+        if re.fullmatch(r"物件名[:：]?", lines[i]):
+            if i + 1 < len(lines):
+                candidate = lines[i + 1].strip()
+                if candidate and not candidate.startswith("物件ID") and not "タグ" in candidate:
+                    name = candidate
 
-        # 物件IDの取得: 「物件ID:」という行の直後が ID
-        if line.startswith("物件ID") and i + 1 < len(lines):
-            next_line = lines[i + 1].strip()
-            if re.fullmatch(r"\d+", next_line):
-                bid = next_line
-            else:
-                # URL形式から抽出
-                match = re.search(r"mansion/(\d+)", next_line)
-                if match:
-                    bid = match.group(1)
+        # 「物件ID:」に完全一致する行の次の行がID
+        if re.fullmatch(r"物件ID[:：]?", lines[i]):
+            if i + 1 < len(lines):
+                candidate = lines[i + 1].strip()
+                if re.fullmatch(r"\d+", candidate):
+                    bid = candidate
 
-    # バックアップ: 全文から物件IDのURLパターンで抽出
+    # バックアップ: 全体からID抽出（URL）
     if not bid:
         match = re.search(r"mansion/(\d+)", text)
         if match:
