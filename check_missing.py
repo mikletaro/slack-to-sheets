@@ -38,17 +38,34 @@ def fetch_slack_messages():
     return messages
 
 # メッセージ本文から物件名とIDと日付を抽出
+import re
+
 def parse_slack_message(text):
-    # 1行形式に対応した柔軟な正規表現
-    name_match = re.search(r'物件名[:：] ?(.+?)(?:,|$)', text)
-    bid_match = re.search(r'物件ID[:：] ?(\d+)', text)
-    date_match = re.search(r'日付[:：] ?(\d{4}-\d{2}-\d{2})', text)
+    """
+    Slackから取得したメッセージの中から「物件名」「物件ID」「日付」を抽出する。
+    複数行にわたる形式にも対応。
+    """
+    results = []
 
-    name = name_match.group(1).strip() if name_match else None
-    bid = bid_match.group(1).strip() if bid_match else None
-    date = date_match.group(1).strip() if date_match else None
+    lines = text.splitlines()
+    for line in lines:
+        # 行頭が "- 日付: " で始まる通知行のみ処理する
+        if not line.strip().startswith("- 日付"):
+            continue
 
-    return name, bid, date
+        name_match = re.search(r'物件名[:：]\s*(.*?)(?:,|$)', line)
+        bid_match = re.search(r'物件ID[:：]\s*(\d+)', line)
+        date_match = re.search(r'日付[:：]\s*(\d{4}-\d{2}-\d{2})', line)
+
+        name = name_match.group(1).strip() if name_match else None
+        bid = bid_match.group(1).strip() if bid_match else None
+        date = date_match.group(1).strip() if date_match else None
+
+        if name and bid and date:
+            results.append((name, bid, date))
+    
+    return results  # List[Tuple[str, str, str]]
+
 
 # メイン処理
 def check_missing_entries():
