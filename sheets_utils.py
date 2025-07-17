@@ -4,17 +4,16 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 def get_worksheet():
-    # Renderでは環境変数から取得したBase64文字列をデコードしてcredentials.jsonとして扱う
+    # Base64環境変数からサービスアカウント認証
     creds_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_BASE64']).decode('utf-8')
-    creds_dict = eval(creds_json)
+    creds_dict = eval(creds_json)  # セキュリティ上は json.loads 推奨
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(credentials)
 
-    # スプレッドシートのIDを環境変数から取得
+    # スプレッドシートID取得してワークシート選択
     sheet_id = os.environ['SPREADSHEET_ID']
-    spreadsheet = client.open_by_key(sheet_id) 
-    
+    spreadsheet = client.open_by_key(sheet_id)
     return spreadsheet.worksheet("テストログ")
 
 def append_if_not_duplicate(bukken_name, bukken_id, date_str):
@@ -30,17 +29,31 @@ def append_if_not_duplicate(bukken_name, bukken_id, date_str):
     print("✅ Appended to sheet:", bukken_name, bukken_id, date_str)
     return True
 
+def append_row_if_not_exists(row, unique_cols=None):
+    """
+    worksheet引数を省略し、内部でget_worksheet()を使用。
+    `unique_cols`を指定すると、重複チェックにカラム名で比較。
+    """
+    worksheet = get_worksheet()
+    all_values = worksheet.get_all_values()
 
-def append_row_if_not_exists(worksheet, row, unique_cols=None):
-    # 例: unique_cols=['物件名', '物件ID', '日付']
-    existing_values = worksheet.get_all_values()
-    headers = existing_values[0]
-    data = existing_values[1:]
+    if not all_values:
+        worksheet.append_row(row)
+        return True
+
+    headers = all_values[0]
+    data = all_values[1:]
 
     if unique_cols:
         indices = [headers.index(col) for col in unique_cols if col in headers]
         for existing_row in data:
             if all(existing_row[i] == row[i] for i in indices):
-                return False  # 重複あり
+                print("🟡 Duplicate row based on unique_cols. Skipping.")
+                return False
+    elif row in data:
+        print("🟡 Exact row already exists. Skipping.")
+        return False
+
     worksheet.append_row(row)
+    print("✅ Appended to sheet:", row)
     return True
