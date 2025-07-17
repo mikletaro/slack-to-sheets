@@ -7,36 +7,34 @@ from sheets_utils import get_worksheet
 
 JST = timezone(timedelta(hours=9))
 
-
 def extract_info_from_message(text: str):
-    lines = [line.strip() for line in text.splitlines()]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     name = None
     bid = None
 
     for i, line in enumerate(lines):
-        # 物件名: の次の行が物件名（空でない、かつ "物件ID" などではない）
-        if re.fullmatch(r"物件名[:：]?", line) and i + 1 < len(lines):
+        # 物件名の取得: 「物件名:」という行の直後が物件名
+        if line.startswith("物件名") and i + 1 < len(lines):
             next_line = lines[i + 1].strip()
-            if next_line and not re.search(r"物件ID|タグ種類|トラッキング", next_line):
+            if next_line and not next_line.startswith("物件ID") and "タグ" not in next_line:
                 name = next_line
 
-        # 物件ID: の次の行が ID（URL または 数字）
-        if re.fullmatch(r"物件ID[:：]?", line) and i + 1 < len(lines):
+        # 物件IDの取得: 「物件ID:」という行の直後が ID
+        if line.startswith("物件ID") and i + 1 < len(lines):
             next_line = lines[i + 1].strip()
-            # パターン1: 数字のみ
             if re.fullmatch(r"\d+", next_line):
                 bid = next_line
-            # パターン2: リンク形式（Slackの <URL|123456>）
             else:
-                bid_match = re.search(r"mansion/(\d+)", next_line)
-                if bid_match:
-                    bid = bid_match.group(1)
+                # URL形式から抽出
+                match = re.search(r"mansion/(\d+)", next_line)
+                if match:
+                    bid = match.group(1)
 
-    # バックアップ: 全体からURLで拾う
+    # バックアップ: 全文から物件IDのURLパターンで抽出
     if not bid:
-        bid_match = re.search(r"mansion/(\d+)", text)
-        if bid_match:
-            bid = bid_match.group(1)
+        match = re.search(r"mansion/(\d+)", text)
+        if match:
+            bid = match.group(1)
 
     return name, bid
 
