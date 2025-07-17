@@ -37,6 +37,47 @@ def fetch_slack_messages():
         print(f"[ERROR] Slack API error: {e.response['error']}")
         return []
 
+def parse_slack_message(message: dict) -> Optional[Tuple[str, str, str]]:
+    import datetime
+    import pytz
+    import re
+
+    blocks = message.get("blocks", [])
+    name = None
+    bid = None
+    date = None
+
+    for block in blocks:
+        for field in block.get("fields", []):
+            text = field.get("text", "")
+            if "物件名" in text:
+                name_line = text.split("\n")
+                if len(name_line) > 1:
+                    name = name_line[1].strip()
+            elif "物件ID" in text:
+                bid_line = text.split("\n")
+                if len(bid_line) > 1:
+                    bid = bid_line[1].strip()
+
+        text = block.get("text", {}).get("text", "")
+        if "物件名" in text and not name:
+            match = re.search(r"物件名[:：]*\n?([^\n]+)", text)
+            if match:
+                name = match.group(1).strip()
+        if "物件ID" in text and not bid:
+            match = re.search(r"物件ID[:：]*\n?(\d+)", text)
+            if match:
+                bid = match.group(1).strip()
+
+    ts = message.get("ts")
+    if ts:
+        timestamp = datetime.datetime.fromtimestamp(float(ts), pytz.timezone("Asia/Tokyo"))
+        date = timestamp.strftime("%Y-%m-%d")
+
+    if name and bid and date:
+        return (name, bid, date)
+    return None
+    
 # 通知メッセージから情報抽出
 def extract_info_from_message(text: str):
     lines = [line.strip() for line in text.splitlines() if line.strip()]
