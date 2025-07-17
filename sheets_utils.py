@@ -29,3 +29,18 @@ def append_if_not_duplicate(bukken_name, bukken_id, date_str):
     ws.append_row([bukken_name, bukken_id, "", date_str])
     print("✅ Appended to sheet:", bukken_name, bukken_id, date_str)
     return True
+
+
+def append_row_if_not_exists(worksheet, row, unique_cols=None):
+    # 例: unique_cols=['物件名', '物件ID', '日付']
+    existing_values = worksheet.get_all_values()
+    headers = existing_values[0]
+    data = existing_values[1:]
+
+    if unique_cols:
+        indices = [headers.index(col) for col in unique_cols if col in headers]
+        for existing_row in data:
+            if all(existing_row[i] == row[i] for i in indices):
+                return False  # 重複あり
+    worksheet.append_row(row)
+    return True
