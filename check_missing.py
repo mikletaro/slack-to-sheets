@@ -9,15 +9,17 @@ JST = timezone(timedelta(hours=9))
 
 
 def extract_info_from_message(text: str):
-    lines = text.splitlines()
+    lines = [line.strip() for line in text.splitlines()]
     name = None
     bid = None
 
     for i, line in enumerate(lines):
-        if "物件名" in line and i + 1 < len(lines):
-            name = lines[i + 1].strip()
-        elif "物件ID" in line and i + 1 < len(lines):
-            bid_line = lines[i + 1].strip()
+        if re.match(r"^物件名[:：]?$", line) and i + 1 < len(lines):
+            name_candidate = lines[i + 1]
+            if not re.match(r"^物件ID[:：]?$", name_candidate):
+                name = name_candidate
+        elif re.match(r"^物件ID[:：]?$", line) and i + 1 < len(lines):
+            bid_line = lines[i + 1]
             bid = extract_bid(bid_line)
 
     if not bid:
@@ -55,6 +57,7 @@ def fetch_slack_messages():
     print(f"[INFO] 取得したSlackメッセージ数: {len(messages)}")
 
     records = []
+    seen_bids = set()
 
     for msg in messages:
         ts = float(msg["ts"])
@@ -66,8 +69,9 @@ def fetch_slack_messages():
         print(f"[SLACK] timestamp: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"[SLACK] name: {name}, bid: {bid}, date: {date_str}")
 
-        if bid:
+        if bid and bid not in seen_bids:
             records.append((name, bid, date_str))
+            seen_bids.add(bid)
 
     return records
 
