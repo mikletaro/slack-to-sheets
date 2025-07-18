@@ -6,7 +6,7 @@ from google.oauth2.service_account import Credentials
 def get_worksheet():
     # Base64環境変数からサービスアカウント認証
     creds_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_BASE64']).decode('utf-8')
-    creds_dict = eval(creds_json)  # セキュリティ上は json.loads 推奨
+    creds_dict = json.loads(creds_json)
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(credentials)
