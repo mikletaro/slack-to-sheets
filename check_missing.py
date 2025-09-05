@@ -7,6 +7,12 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from sheets_utils import get_worksheet, append_row_if_not_exists
 
+def get_start_date_jst():
+    jst = pytz.timezone("Asia/Tokyo")
+    # 7月1日（今年）に変更
+    start_date = datetime.datetime(2025, 7, 1, 0, 0, 0, tzinfo=jst)
+    return start_date
+    
 # JSTで今週の月曜を取得
 def get_start_of_week_jst():
     jst = pytz.timezone("Asia/Tokyo")
@@ -21,7 +27,7 @@ def fetch_slack_messages():
     channel_id = os.environ["SLACK_CHANNEL_ID"]
     client = WebClient(token=token)
 
-    start_time = get_start_of_week_jst()
+    start_time = get_start_date_jst()
     oldest_ts = start_time.timestamp()
     print(f"[INFO] Slack取得開始（今週月曜 JST）: {start_time}")
 
