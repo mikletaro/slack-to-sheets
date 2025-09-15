@@ -10,7 +10,7 @@ from sheets_utils import get_worksheet, append_row_if_not_exists
 def get_start_date_jst():
     jst = pytz.timezone("Asia/Tokyo")
     # 7月1日（今年）に変更
-    start_date = datetime.datetime(2025, 7, 1, 0, 0, 0, tzinfo=jst)
+    start_date = datetime.datetime(2025, 9, 1, 0, 0, 0, tzinfo=jst)
     return start_date
     
 # JSTで今週の月曜を取得
