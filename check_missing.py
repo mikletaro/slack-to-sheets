@@ -124,9 +124,16 @@ def extract_info_from_message(text: str):
 def check_missing_entries():
     messages = fetch_slack_messages()
     sheet_rows = get_worksheet().get_all_values()
-    existing_entries = {(row[0], row[1]) for row in sheet_rows[1:]}
+    # (name, bid) -> row_index (0-indexed list context, so +1 for Sheets API row number)
+    existing_entries = {}
+    for i, row in enumerate(sheet_rows[1:], start=2): # Header is row 1, data starts row 2
+        if len(row) >= 2:
+            existing_entries[(row[0], row[1])] = i
+
     missing = []
     seen = set()
+    
+    ws = get_worksheet() # Need worksheet object for updates
 
     for msg in messages:
         ts = msg.get("ts", "")
@@ -146,29 +153,44 @@ def check_missing_entries():
         print(f"[SLACK] timestamp: {dt}, name: {name}, bid: {bid}, date: {date}")
         key = (name, bid)
         full_key = (name, bid, date)
+        
+        # 来場予約判定
+        text_content = msg.get("text", "")
+        blocks = msg.get("blocks", [])
+        is_visit = "来場予約" in text_content
+        if not is_visit:
+                for block in blocks:
+                    if "来場予約" in str(block):
+                        is_visit = True
+                        break
 
-        if key not in existing_entries and full_key not in seen:
-            missing.append((date, name, bid, msg))
+        if key in existing_entries:
+            # 既存エントリの更新チェック
+            if is_visit:
+                row_idx = existing_entries[key]
+                # data list is 0-indexed, so row_idx-1 is the index in sheet_rows
+                current_row_data = sheet_rows[row_idx-1] 
+                
+                # Check if H column (index 7) is empty or not "1"
+                current_flag = current_row_data[7] if len(current_row_data) > 7 else ""
+                
+                if current_flag != "1":
+                    print(f"🔄 更新: {name} (ID: {bid}) を来場予約(H列=1)に更新します。行: {row_idx}")
+                    ws.update_cell(row_idx, 8, "1")
+            continue
+
+        if full_key not in seen:
+            missing.append((date, name, bid, is_visit))
             seen.add(full_key)
 
     if not missing:
-        print("✅ 今週分の通知はすべて記載済みです。")
+        print("✅ 未登録の通知はありません。")
     else:
-        print("⚠️ スプレッドシートに記載されていない通知があります:")
-        for date_str, name, bid, msg_obj in missing:
-            print(f"- 日付: {date_str}, 物件名: {name}, 物件ID: {bid}")
+        print("⚠️ 未登録の通知を追記します:")
+        for date_str, name, bid, is_visit_flag in missing:
+            print(f"- 日付: {date_str}, 物件名: {name}, 物件ID: {bid}, 来場: {is_visit_flag}")
             
-            # 来場予約判定
-            text_content = msg_obj.get("text", "")
-            blocks = msg_obj.get("blocks", [])
-            is_visit = "来場予約" in text_content
-            if not is_visit:
-                 for block in blocks:
-                     if "来場予約" in str(block):
-                         is_visit = True
-                         break
-
-            if is_visit:
+            if is_visit_flag:
                 row_data = [name, bid, "", date_str, "", "", "", "1"]
             else:
                 row_data = [name, bid, "", date_str]
