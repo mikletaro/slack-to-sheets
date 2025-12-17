@@ -79,7 +79,17 @@ def slack_events():
         if name and bid and ts:
             dt = datetime.fromtimestamp(float(ts), pytz.timezone("Asia/Tokyo"))
             date = dt.strftime('%Y/%m/%d')
-            append_if_not_duplicate(name, bid, date)
+            
+            # 来場予約判定
+            is_visit = "来場予約" in text
+            if not is_visit:
+                 # blocksの中身もチェック
+                 for block in blocks:
+                     if "来場予約" in str(block):
+                         is_visit = True
+                         break
+            
+            append_if_not_duplicate(name, bid, date, is_visit_reservation=is_visit)
         else:
             print("⚠️ 情報が見つかりませんでした")
             print(f"[DEBUG] text={text}")

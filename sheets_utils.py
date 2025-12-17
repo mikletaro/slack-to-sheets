@@ -17,7 +17,7 @@ def get_worksheet():
     spreadsheet = client.open_by_key(sheet_id)
     return spreadsheet.worksheet("テストログ")
 
-def append_if_not_duplicate(bukken_name, bukken_id, date_str):
+def append_if_not_duplicate(bukken_name, bukken_id, date_str, is_visit_reservation=False):
     ws = get_worksheet()
     records = ws.get_all_values()
 
@@ -26,8 +26,13 @@ def append_if_not_duplicate(bukken_name, bukken_id, date_str):
             print("🟡 Duplicate entry found. Skipping.")
             return False
 
-    ws.append_row([bukken_name, bukken_id, "", date_str])
-    print("✅ Appended to sheet:", bukken_name, bukken_id, date_str)
+    if is_visit_reservation:
+        row_data = [bukken_name, bukken_id, "", date_str, "", "", "", "1"]
+    else:
+        row_data = [bukken_name, bukken_id, "", date_str]
+        
+    ws.append_row(row_data)
+    print("✅ Appended to sheet:", bukken_name, bukken_id, date_str, "(Visit)" if is_visit_reservation else "")
     return True
 
 def append_row_if_not_exists(row, unique_cols=None):

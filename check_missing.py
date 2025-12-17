@@ -9,8 +9,8 @@ from sheets_utils import get_worksheet, append_row_if_not_exists
 
 def get_start_date_jst():
     jst = pytz.timezone("Asia/Tokyo")
-    # 7月1日（今年）に変更
-    start_date = datetime.datetime(2025, 9, 1, 0, 0, 0, tzinfo=jst)
+    # 2025年7月1日からチェック
+    start_date = datetime.datetime(2025, 7, 1, 0, 0, 0, tzinfo=jst)
     return start_date
     
 # JSTで今週の月曜を取得
@@ -146,16 +146,32 @@ def check_missing_entries():
         full_key = (name, bid, date)
 
         if key not in existing_entries and full_key not in seen:
-            missing.append((date, name, bid))
+            missing.append((date, name, bid, msg))
             seen.add(full_key)
 
     if not missing:
         print("✅ 今週分の通知はすべて記載済みです。")
     else:
         print("⚠️ スプレッドシートに記載されていない通知があります:")
-        for date_str, name, bid in missing:
+        for date_str, name, bid, msg_obj in missing:
             print(f"- 日付: {date_str}, 物件名: {name}, 物件ID: {bid}")
-            append_row_if_not_exists([name, bid, "", date_str])
+            
+            # 来場予約判定
+            text_content = msg_obj.get("text", "")
+            blocks = msg_obj.get("blocks", [])
+            is_visit = "来場予約" in text_content
+            if not is_visit:
+                 for block in blocks:
+                     if "来場予約" in str(block):
+                         is_visit = True
+                         break
+
+            if is_visit:
+                row_data = [name, bid, "", date_str, "", "", "", "1"]
+            else:
+                row_data = [name, bid, "", date_str]
+
+            append_row_if_not_exists(row_data)
 
         print(f"📌 {len(missing)} 件をスプレッドシートに追記しました。")
 
