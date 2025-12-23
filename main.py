@@ -54,7 +54,7 @@ def parse_slack_message(event: dict) -> Optional[Tuple[str, str, str]]:
 
 def record_if_missing(name: str, bid: str, date_str: str) -> None:
     ws = get_worksheet()
-    existing = {(r, r[1]) for r in ws.get_all_values()[1:]}
+    existing = {(r[0], r[1]) for r in ws.get_all_values()[1:]}
     if (name, bid) in existing:
         return
     append_row_if_not_exists([name, bid, "", date_str])
