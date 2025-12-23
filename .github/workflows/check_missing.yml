@@ -24,7 +24,7 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-          GOOGLE_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_CREDENTIALS_BASE64 }}  # ✅ 追加
+          CREDENTIALS_JSON_BASE64: ${{ secrets.GOOGLE_CREDENTIALS_BASE64 }}  # ✅ 修正
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }} 
         run: |
           python check_missing.py
