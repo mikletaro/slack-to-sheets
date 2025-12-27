@@ -81,11 +81,7 @@ def handle_message_events(body, logger):
     # デバッグ: イベント全体をログ出力
     logger.info(f"[DEBUG] Received event: {event}")
     
-    # ボットメッセージやスレッド返信をスキップ
-    if event.get("subtype") == "bot_message":
-        logger.info("[SKIP] Bot message detected")
-        return
-    
+    # スレッド返信をスキップ
     if event.get("thread_ts"):
         logger.info("[SKIP] Thread reply detected")
         return
