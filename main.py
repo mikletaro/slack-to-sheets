@@ -78,24 +78,43 @@ def parse_slack_message(event: dict) -> Optional[Tuple[str, str, str, bool]]:
 def handle_message_events(body, logger):
     event = body["event"]
     
+    # デバッグ: イベント全体をログ出力
+    logger.info(f"[DEBUG] Received event: {event}")
+    
     # ボットメッセージやスレッド返信をスキップ
-    if event.get("subtype") == "bot_message" or event.get("thread_ts"):
+    if event.get("subtype") == "bot_message":
+        logger.info("[SKIP] Bot message detected")
         return
+    
+    if event.get("thread_ts"):
+        logger.info("[SKIP] Thread reply detected")
+        return
+    
+    # デバッグ: パース前の情報
+    logger.info(f"[DEBUG] Event text: {event.get('text', '')}")
+    logger.info(f"[DEBUG] Event blocks: {event.get('blocks', [])}")
     
     parsed = parse_slack_message(event)
     if not parsed:
-        logger.info(f"skip (unparsable): ts={event['ts']}")
+        logger.warning(f"[PARSE_FAILED] Could not parse message - ts={event['ts']}")
+        logger.warning(f"[PARSE_FAILED] Text: {event.get('text', '')}")
+        logger.warning(f"[PARSE_FAILED] Blocks: {event.get('blocks', [])}")
         return
     
     name, bid, date_str, is_visit = parsed
-    logger.info(f"→ {name} / {bid} / {date_str} / 来場予約: {is_visit}")
+    logger.info(f"[PARSED] 物件名={name} / 物件ID={bid} / 日付={date_str} / 来場予約={is_visit}")
     
-    # sheets_utils の append_if_not_duplicate を使用
-    result = append_if_not_duplicate(name, bid, date_str, is_visit_reservation=is_visit)
-    if result:
-        logger.info(f"[WRITE] {name}, {bid}, {date_str}, 来場予約={is_visit}")
-    else:
-        logger.info(f"[SKIP] Already exists: {name}, {bid}")
+    try:
+        # sheets_utils の append_if_not_duplicate を使用
+        result = append_if_not_duplicate(name, bid, date_str, is_visit_reservation=is_visit)
+        if result:
+            logger.info(f"[SUCCESS] Written to sheet: {name}, {bid}, {date_str}, 来場予約={is_visit}")
+        else:
+            logger.info(f"[DUPLICATE] Already exists: {name}, {bid}")
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to write to sheet: {e}")
+        logger.error(f"[ERROR] Data: name={name}, bid={bid}, date={date_str}, visit={is_visit}")
+        raise
 
 flask_app = Flask(__name__)
 handler = SlackRequestHandler(bolt_app)
