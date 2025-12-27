@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 from flask import Flask, request
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
-from sheets_utils import get_worksheet, append_row_if_not_exists
+from sheets_utils import append_if_not_duplicate
 
 # Slack Boltアプリ初期化
 bolt_app = App(
@@ -14,64 +14,88 @@ bolt_app = App(
     signing_secret=os.environ["SLACK_SIGNING_SECRET"],
 )
 
-# メッセージパース処理（check_missing.pyの関数と同様に実装）
+# メッセージパース処理
 def extract_bid(text: str) -> str:
     m = re.search(r"\|(\d+)>", text)
     return m.group(1) if m else text.strip()
 
-def parse_slack_message(event: dict) -> Optional[Tuple[str, str, str]]:
+def parse_slack_message(event: dict) -> Optional[Tuple[str, str, str, bool]]:
+    """
+    Slackメッセージから (物件名, 物件ID, YYYY/MM/DD, 来場予約フラグ) を取得。
+    解析できなければ None。
+    """
     blocks = event.get("blocks", [])
+    text = event.get("text", "")
     name = None
     bid = None
     date = None
+    is_visit_reservation = False
+    
+    # 来場予約判定
+    if "来場予約" in text:
+        is_visit_reservation = True
+    
+    # blocksから物件情報を抽出
     for block in blocks:
+        # 来場予約チェック（blocks内）
+        if not is_visit_reservation and "来場予約" in str(block):
+            is_visit_reservation = True
+        
+        # fields から抽出
         for field in block.get("fields", []):
-            text = field.get("text", "")
-            if "物件名" in text:
-                name_line = text.split("\n")
+            text_content = field.get("text", "")
+            if "物件名" in text_content and not name:
+                name_line = text_content.split("\n")
                 if len(name_line) > 1:
                     name = name_line[1].strip()
-            elif "物件ID" in text:
-                bid_line = text.split("\n")
+            elif "物件ID" in text_content and not bid:
+                bid_line = text_content.split("\n")
                 if len(bid_line) > 1:
                     bid = extract_bid(bid_line[1].strip())
-        text = block.get("text", {}).get("text", "")
-        if "物件名" in text and not name:
-            match = re.search(r"物件名[:：]*\n?([^\n]+)", text)
+        
+        # text.text から抽出
+        text_block = block.get("text", {}).get("text", "")
+        if "物件名" in text_block and not name:
+            match = re.search(r"物件名[:：]*\n?([^\n]+)", text_block)
             if match:
                 name = match.group(1).strip()
-        if "物件ID" in text and not bid:
-            match = re.search(r"物件ID[:：]*\n?([^\n]+)", text)
+        if "物件ID" in text_block and not bid:
+            match = re.search(r"物件ID[:：]*\n?([^\n]+)", text_block)
             if match:
                 bid = extract_bid(match.group(1).strip())
+    
+    # タイムスタンプから日付を取得
     ts = event.get("ts")
     if ts:
         timestamp = dt.datetime.fromtimestamp(float(ts), pytz.timezone("Asia/Tokyo"))
-        date = timestamp.strftime("%Y-%m-%d")
+        date = timestamp.strftime("%Y/%m/%d")
+    
     if name and bid and date:
-        return (name, bid, date)
+        return (name, bid, date, is_visit_reservation)
     return None
-
-def record_if_missing(name: str, bid: str, date_str: str) -> None:
-    ws = get_worksheet()
-    existing = {(r[0], r[1]) for r in ws.get_all_values()[1:]}
-    if (name, bid) in existing:
-        return
-    append_row_if_not_exists([name, bid, "", date_str])
-    print(f"[WRITE] {name}, {bid}, {date_str}")
 
 @bolt_app.event("message")
 def handle_message_events(body, logger):
     event = body["event"]
+    
+    # ボットメッセージやスレッド返信をスキップ
     if event.get("subtype") == "bot_message" or event.get("thread_ts"):
         return
+    
     parsed = parse_slack_message(event)
     if not parsed:
         logger.info(f"skip (unparsable): ts={event['ts']}")
         return
-    name, bid, date_str = parsed
-    logger.info(f"→ {name} / {bid} / {date_str}")
-    record_if_missing(name, bid, date_str)
+    
+    name, bid, date_str, is_visit = parsed
+    logger.info(f"→ {name} / {bid} / {date_str} / 来場予約: {is_visit}")
+    
+    # sheets_utils の append_if_not_duplicate を使用
+    result = append_if_not_duplicate(name, bid, date_str, is_visit_reservation=is_visit)
+    if result:
+        logger.info(f"[WRITE] {name}, {bid}, {date_str}, 来場予約={is_visit}")
+    else:
+        logger.info(f"[SKIP] Already exists: {name}, {bid}")
 
 flask_app = Flask(__name__)
 handler = SlackRequestHandler(bolt_app)
@@ -86,4 +110,3 @@ def index():
 
 if __name__ == "__main__":
     flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
-
