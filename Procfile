@@ -1,2 +1,2 @@
-web: python main.py
+web: gunicorn main:flask_app --bind 0.0.0.0:$PORT --log-level info
 

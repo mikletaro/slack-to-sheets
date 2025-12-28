@@ -1,8 +1,9 @@
 Flask
-gspread
-google-auth
+gspread>=5.7.0
+google-auth>=2.16.0
+pytz
+gunicorn>=20.1.0
 oauth2client
 slack_sdk
-pytz
-slack-bolt
+slack-bolt>=1.14.0
 python-dotenv
