@@ -2,11 +2,20 @@ import os
 import re
 import pytz
 import datetime as dt
+import logging
 from typing import Optional, Tuple
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from sheets_utils import append_if_not_duplicate
+
+# ロギング設定
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Slack Boltアプリ初期化
 bolt_app = App(
@@ -115,13 +124,43 @@ def handle_message_events(body, logger):
 flask_app = Flask(__name__)
 handler = SlackRequestHandler(bolt_app)
 
+# 全リクエストをログに記録
+@flask_app.before_request
+def log_request_info():
+    logger.info(f"[REQUEST] {request.method} {request.path} from {request.remote_addr}")
+    if request.method == "POST":
+        logger.info(f"[REQUEST] Content-Type: {request.content_type}")
+
 @flask_app.route("/slack/events", methods=["POST"])
 def slack_events():
+    logger.info("[SLACK_EVENT] Slack event received")
     return handler.handle(request)
 
 @flask_app.route("/", methods=["GET"])
 def index():
     return "Slack → Sheets bridge is running!"
 
+@flask_app.route("/health", methods=["GET"])
+def health_check():
+    """診断用ヘルスチェックエンドポイント"""
+    env_status = {
+        "SLACK_BOT_TOKEN": "✅ 設定済み" if os.environ.get("SLACK_BOT_TOKEN") else "❌ 未設定",
+        "SLACK_SIGNING_SECRET": "✅ 設定済み" if os.environ.get("SLACK_SIGNING_SECRET") else "❌ 未設定",
+        "GOOGLE_CREDENTIALS_BASE64": "✅ 設定済み" if os.environ.get("GOOGLE_CREDENTIALS_BASE64") else "❌ 未設定",
+        "SPREADSHEET_ID": "✅ 設定済み" if os.environ.get("SPREADSHEET_ID") else "❌ 未設定",
+    }
+    
+    all_set = all("✅" in v for v in env_status.values())
+    
+    return jsonify({
+        "status": "healthy" if all_set else "configuration_error",
+        "environment_variables": env_status,
+        "message": "全ての環境変数が設定されています" if all_set else "一部の環境変数が未設定です"
+    })
+
 if __name__ == "__main__":
+    logger.info("=" * 60)
+    logger.info("[STARTUP] Slack → Sheets アプリを起動します")
+    logger.info(f"[STARTUP] PORT: {os.environ.get('PORT', 3000)}")
+    logger.info("=" * 60)
     flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
