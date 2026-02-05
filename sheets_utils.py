@@ -22,7 +22,8 @@ def append_if_not_duplicate(bukken_name, bukken_id, date_str, is_visit_reservati
     records = ws.get_all_values()
 
     for row in records:
-        if len(row) >= 2 and row[0] == bukken_name and row[1] == bukken_id:
+        # Check only bukken_id (row[1]) for duplicates
+        if len(row) >= 2 and row[1].strip() == str(bukken_id).strip():
             print("🟡 Duplicate entry found. Skipping.")
             return False
 
