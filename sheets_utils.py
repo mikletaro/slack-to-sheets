@@ -21,19 +21,32 @@ def append_if_not_duplicate(bukken_name, bukken_id, date_str, is_visit_reservati
     ws = get_worksheet()
     records = ws.get_all_values()
 
+    # 来場予約の場合、物件名で既存行を検索
+    if is_visit_reservation:
+        for idx, row in enumerate(records):
+            # A列(物件名)で一致をチェック
+            if len(row) >= 1 and row[0].strip() == str(bukken_name).strip():
+                # 既存行が見つかった場合、H列(インデックス7)を更新
+                row_number = idx + 1  # gspreadは1-indexed
+                ws.update_cell(row_number, 8, "1")  # H列は8番目
+                print(f"✅ Updated H column for existing property: {bukken_name}")
+                return True
+        
+        # 既存行が見つからない場合、新しい行を追加
+        row_data = [bukken_name, bukken_id, "", date_str, "", "", "", "1"]
+        ws.append_row(row_data)
+        print("✅ Appended new visit reservation:", bukken_name, bukken_id, date_str)
+        return True
+    
+    # 来場予約でない場合、物件IDで重複チェック(既存の動作)
     for row in records:
-        # Check only bukken_id (row[1]) for duplicates
         if len(row) >= 2 and row[1].strip() == str(bukken_id).strip():
             print("🟡 Duplicate entry found. Skipping.")
             return False
 
-    if is_visit_reservation:
-        row_data = [bukken_name, bukken_id, "", date_str, "", "", "", "1"]
-    else:
-        row_data = [bukken_name, bukken_id, "", date_str]
-        
+    row_data = [bukken_name, bukken_id, "", date_str]
     ws.append_row(row_data)
-    print("✅ Appended to sheet:", bukken_name, bukken_id, date_str, "(Visit)" if is_visit_reservation else "")
+    print("✅ Appended to sheet:", bukken_name, bukken_id, date_str)
     return True
 
 def append_row_if_not_exists(row, unique_cols=None):
