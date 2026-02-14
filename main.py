@@ -133,6 +133,12 @@ def log_request_info():
 
 @flask_app.route("/slack/events", methods=["POST"])
 def slack_events():
+    # Slackの再送をスキップ（3秒以内にACKを返せなかった場合の再送）
+    retry_num = request.headers.get("X-Slack-Retry-Num")
+    if retry_num:
+        logger.info(f"[SKIP] Slack retry detected (retry #{retry_num})")
+        return "", 200
+
     logger.info("[SLACK_EVENT] Slack event received")
     return handler.handle(request)
 

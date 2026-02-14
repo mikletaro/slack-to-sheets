@@ -21,17 +21,17 @@ def append_if_not_duplicate(bukken_name, bukken_id, date_str, is_visit_reservati
     ws = get_worksheet()
     records = ws.get_all_values()
 
-    # 来場予約の場合、物件名で既存行を検索
+    # 来場予約の場合、物件IDで既存行を検索
     if is_visit_reservation:
         for idx, row in enumerate(records):
-            # A列(物件名)で一致をチェック
-            if len(row) >= 1 and row[0].strip() == str(bukken_name).strip():
+            # B列(物件ID)で一致をチェック（物件名は表記揺れがあるためIDで統一）
+            if len(row) >= 2 and row[1].strip() == str(bukken_id).strip():
                 # 既存行が見つかった場合、H列(インデックス7)を更新
                 row_number = idx + 1  # gspreadは1-indexed
                 ws.update_cell(row_number, 8, "1")  # H列は8番目
-                print(f"✅ Updated H column for existing property: {bukken_name}")
+                print(f"✅ Updated H column for existing property: {bukken_name} (ID: {bukken_id})")
                 return True
-        
+
         # 既存行が見つからない場合、新しい行を追加
         row_data = [bukken_name, bukken_id, "", date_str, "", "", "", "1"]
         ws.append_row(row_data)
